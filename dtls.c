@@ -47,6 +47,7 @@ static const struct protodefs protodefs = {
     "radsec", /* secretdefault */
     SOCK_DGRAM, /* socktype */
     "2083", /* portdefault */
+    "2083", /* dynauthportdefault */
     REQUEST_RETRY_COUNT, /* retrycountdefault */
     10, /* retrycountmax */
     REQUEST_RETRY_INTERVAL, /* retryintervaldefault */

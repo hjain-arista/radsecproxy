@@ -610,6 +610,14 @@ See section
 \fBBASIC OPTIONS\fR for details on this option.
 .RE
 
+.BR "UseDynAuthPort (" on | off)
+.RS
+Enable the use of default dynamic authorization port instead of default auth and acct
+ports (default \fBoff\fR). If it is enabled (\fBon\fR) and \fBPort\fR is not
+configured, then default dynamic authorization ports are used. UDP and TCP will default
+to 3799 while TLS and DTLS will default to 2083.
+.RE
+
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 
@@ -652,6 +660,8 @@ The allowed options in a realm block are:
 .BI "Server " server
 .br
 .BI "AccountingServer " server
+.br
+.BI "DynAuthServer " server
 .RS
 Specify the \fIserver\fR to which requests for this realm should be forwarded.
 \fIserver\fR references a previously defined \fBserver\fR block (see the
@@ -659,14 +669,21 @@ Specify the \fIserver\fR to which requests for this realm should be forwarded.
 specified multiple times, or omitted completely. If no \fBserver\fR is
 configured, the proxy will deny all Access-Requests for this realm. If no
 \fBaccountingServer\fR is configured, the proxy will silently ignore all
-Accounting-Requests for this realm. See the \fBSERVER SELECTION\fR section below
-for details.
+Accounting-Requests for this realm. if no \fBdynAuthServer\fR is configured, the proxy
+will silently ignore all dynamic authorization (CoA/Disconnect) requests for this realm.
+See the \fBSERVER SELECTION\fR section below for details.
 .RE
 
 .BR "AccountingResponse (" on | off )
 .RS
 Enable sending Accounting-Response instead of ignoring Accounting-Requests when
 no \fBaccoutingServer\fR are configured.
+.RE
+
+.BR "DynAuthResponse (" on | off )
+.RS
+Enable sending CoA/Disconnect-NAK instead of ignoring CoA/Disconnect-Requests when
+no \fBdynauthServer\fR are configured.
 .RE
 
 .BI "ReplyMessage " message
@@ -676,7 +693,8 @@ because no \fBserver\fR are configured.
 .RE
 
 .SS "REALM BLOCK NAMES AND MATCHING"
-In the general case the proxy will look for a \fB@\fR in the username attribute,
+In the case of Authentication and Accounting requests, in the general case the proxy
+will look for a \fB@\fR in the username attribute,
 and try to do an exact, case insensitive match between what comes after the @
 and the name of the realm block. So if you get a request with the attribute
 value anonymous@example.com, the proxy will go through the realm names in the
@@ -699,6 +717,15 @@ the matching is done on the entire attribute value, you can also use rules like
 server, while other users could be matched by another realm block and use
 another server.
 
+For CoA and Disconnect requests, according to RFC8559, the proxy will validate that
+the first character of the operatorname attribute is an ascii \fB1\fR. The proxy will
+then proceed to strip the first character from operatorname and use the resulting
+string to try to match a realm block. So if a request contains operatorname
+attribute value 1example.com, then the proxy will look for a realm block named
+example.com. Regular expression matching is performed with the stripped out version
+of operatorname value as well i.e example.com will be matched with a regular
+expresssion insted of 1example.com.
+
 .SS "SERVER SELECTION"
 
 Normally requests will be forwarded to the first server option defined. If there
@@ -707,8 +734,8 @@ server if the first is down. If the two first are down, it will try the third
 etc. If the first server comes back up, it will go back to using that one.
 Detection of servers being up or down is based on the use of StatusServer (if
 enabled), and that TCP/TLS/DTLS connections are up. Otherwise unanswered
-requests are used to detect unresponsive servers. AccountingServers are treated
-the same, but independently of the other servers.
+requests are used to detect unresponsive servers. AccountingServers and
+DynAuthServers are treated the same, but independently of the other servers.
 
 If there is no \fBServer\fR option, the proxy will if \fBReplyMessage\fR is
 specified, reply back to the client with an Access Reject message. The message
@@ -725,6 +752,10 @@ nothing, ignoring accounting requests. If instead \fBAccountingResponse\fR is
 set to on, the proxy will log some of the accounting information and send an
 Accounting-Response back. This stops clients from retransmitting
 Accounting-Request messages when a realm has no accountingServer configured.
+
+Similarly, if there is no \fBDynAuthServer\fR option, the proxy will silently ignore
+CoA and Disconnect requests. Setting \fBDynAuthResponse\fR to on will make the proxy
+log some information and send a CoA or Disconnect NAK back.
 
 .SH "TLS BLOCK"
 .nf

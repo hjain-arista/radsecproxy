@@ -174,6 +174,7 @@ struct clsrvconf {
     struct server *servers;
     char *fticks_viscountry;
     char *fticks_visinst;
+    uint8_t usedynauthport;
 };
 
 #include "tlscommon.h"
@@ -214,6 +215,7 @@ struct realm {
     char *name;
     char *message;
     uint8_t accresp;
+    uint8_t dynauthresp;
     regex_t regex;
     uint32_t refcount;
     pthread_mutex_t refmutex;
@@ -222,6 +224,7 @@ struct realm {
     struct list *subrealms;
     struct list *srvconfs;
     struct list *accsrvconfs;
+    struct list *dynauthsrvconfs;
 };
 
 struct protodefs {
@@ -229,6 +232,7 @@ struct protodefs {
     char *secretdefault;
     int socktype;
     char *portdefault;
+    char *dynauthportdefault;
     uint8_t retrycountdefault;
     uint8_t retrycountmax;
     uint8_t retryintervaldefault;
