@@ -610,14 +610,6 @@ See section
 \fBBASIC OPTIONS\fR for details on this option.
 .RE
 
-.BR "UseDynAuthPort (" on | off)
-.RS
-Enable the use of default dynamic authorization port instead of default auth and acct
-ports (default \fBoff\fR). If it is enabled (\fBon\fR) and \fBPort\fR is not
-configured, then default dynamic authorization ports are used. UDP and TCP will default
-to 3799 while TLS and DTLS will default to 2083.
-.RE
-
 The meaning and syntax of the following options are exactly the same as for the client
 block. The details are not repeated here. Please refer to the definitions in the \fBCLIENT BLOCK\fR section.
 
@@ -680,12 +672,6 @@ Enable sending Accounting-Response instead of ignoring Accounting-Requests when
 no \fBaccoutingServer\fR are configured.
 .RE
 
-.BR "DynAuthResponse (" on | off )
-.RS
-Enable sending CoA/Disconnect-NAK instead of ignoring CoA/Disconnect-Requests when
-no \fBdynauthServer\fR are configured.
-.RE
-
 .BI "ReplyMessage " message
 .RS
 Specify a message to be sent back to the client if a Access-Request is denied
@@ -722,9 +708,11 @@ the first character of the operatorname attribute is an ascii \fB1\fR. The proxy
 then proceed to strip the first character from operatorname and use the resulting
 string to try to match a realm block. So if a request contains operatorname
 attribute value 1example.com, then the proxy will look for a realm block named
-example.com. Regular expression matching is performed with the stripped out version
-of operatorname value as well i.e example.com will be matched with a regular
-expresssion insted of 1example.com.
+example.com. For regular expression matching, the prefix \fB1\fR will be replaced with
+\fB@\fR and the resulting opertorname will be matched with realm regexes as described
+above. So if you want to use regex matching the operatorname 1example.com, you could
+have a realm block named /@example\.com$/. This makes it consistent with username matching
+and allows same realm block name  to be used for all types of servers.
 
 .SS "SERVER SELECTION"
 

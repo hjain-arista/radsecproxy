@@ -39,7 +39,6 @@ static const struct protodefs protodefs = {
     NULL, /* secretdefault */
     SOCK_STREAM, /* socktype */
     "1812", /* portdefault */
-    "3799", /* dynauthportdefault */
     0, /* retrycountdefault */
     0, /* retrycountmax */
     REQUEST_RETRY_INTERVAL * REQUEST_RETRY_COUNT, /* retryintervaldefault */

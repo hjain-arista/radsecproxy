@@ -1172,7 +1172,6 @@ struct server *findserver(struct realm **realm, char *id, uint8_t acc, uint8_t c
 
     if (!id)
 	return NULL;
-    debug(DBG_DBG, "findserver: id = %s", id);
     /* returns with lock on realm */
     *realm = id2realm(realms, id);
     if (!*realm)
@@ -1277,7 +1276,7 @@ int radsrv(struct request *rq) {
     struct client *from = rq->from;
     int ttlres;
     char tmp[INET6_ADDRSTRLEN];
-    char *realmname = NULL, *realmid = NULL;
+    char *realmname = NULL;
 
     msg = buf2radmsg(rq->buf, from->conf->secret, from->conf->secret_len, NULL);
     free(rq->buf);
@@ -1331,6 +1330,11 @@ int radsrv(struct request *rq) {
                 debug(DBG_INFO, "radsrv: ignoring access request, no username attribute");
             goto exit;
         }
+
+        if (from->conf->rewriteusername && !rewriteusername(rq, attr)) {
+            debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
+            goto rmclrqexit;
+        }
     } else if (DYNAUTH_REQ(msg->code)) {
         attr = radmsg_gettype(msg, RAD_Attr_Operator_Name);
         if (!attr) {
@@ -1345,13 +1349,6 @@ int radsrv(struct request *rq) {
         }
     } else {
         goto exit;
-    }
-
-    if (msg->code == RAD_Access_Request || msg->code == RAD_Accounting_Request) {
-        if (from->conf->rewriteusername && !rewriteusername(rq, attr)) {
-            debug(DBG_WARN, "radsrv: username malloc failed, ignoring request");
-            goto rmclrqexit;
-        }
     }
 
     userascii = radattr2ascii(attr);
@@ -1378,14 +1375,15 @@ int radsrv(struct request *rq) {
             }
             goto exit;
         }
-        /* strip ascii '1' from the start of operatorname to get realmid */
-        realmid = &realmname[1];
-    } else {
-        realmid = realmname;
+        /*
+         * strip ascii '1' from the start of operatorname and replace it with '@'
+         * because the constructed regex for configured realms expects an '@' in the string
+         */
+        realmname[0] = '@';
     }
     
     /* will return with lock on the realm */
-    to = findserver(&realm, realmid, msg->code == RAD_Accounting_Request,
+    to = findserver(&realm, realmname, msg->code == RAD_Accounting_Request,
                     DYNAUTH_REQ(msg->code));
     if (!realm) {
         if (msg->code == RAD_Access_Request || msg->code == RAD_Accounting_Request) {
@@ -1411,7 +1409,7 @@ int radsrv(struct request *rq) {
             respond(rq, RAD_Access_Reject, realm->message, 1, 1, 0);
         } else if (realm->accresp && msg->code == RAD_Accounting_Request) {
             respond(rq, RAD_Accounting_Response, NULL, 1, 0, 0);
-        } else if (realm->dynauthresp && DYNAUTH_REQ(msg->code)) {
+        } else if (DYNAUTH_REQ(msg->code)) {
             if (msg->code == RAD_Disconnect_Request) {
                 respond(rq, RAD_Disconnect_NAK, NULL, 1, 0, 0);
             } else if (msg->code == RAD_CoA_Request) {
@@ -2017,7 +2015,7 @@ void freerealm(struct realm *realm) {
 
 struct realm *addrealm(struct list *realmlist, char *value, char **servers,
                        char **accservers, char **dynauthservers, char *message,
-                       uint8_t accresp, uint8_t dynauthresp) {
+                       uint8_t accresp) {
     int n;
     struct realm *realm;
     char *s, *regex = NULL;
@@ -2081,7 +2079,6 @@ struct realm *addrealm(struct list *realmlist, char *value, char **servers,
     }
     realm->message = message;
     realm->accresp = accresp;
-    realm->dynauthresp = dynauthresp;
 
     if (regcomp(&realm->regex, regex ? regex : value + 1, REG_EXTENDED | REG_ICASE | REG_NOSUB)) {
 	debug(DBG_ERR, "addrealm: failed to compile regular expression %s", regex ? regex : value + 1);
@@ -2210,8 +2207,7 @@ struct realm *adddynamicrealmserver(struct realm *realm, char *id) {
 	return NULL;
 
     newrealm = addrealm(realm->subrealms, realmname, NULL, NULL, NULL,
-                        stringcopy(realm->message, 0), realm->accresp,
-                        realm->dynauthresp);
+                        stringcopy(realm->message, 0), realm->accresp);
     if (!newrealm) {
 	list_destroy(realm->subrealms);
 	realm->subrealms = NULL;
@@ -2605,11 +2601,7 @@ int compileserverconfig(struct clsrvconf *conf, const char *block) {
 #endif
 
     if (!conf->portsrc) {
-        if (conf->usedynauthport) {
-            conf->portsrc = stringcopy(conf->pdef->dynauthportdefault, 0);
-        } else {
-            conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
-        }
+        conf->portsrc = stringcopy(conf->pdef->portdefault, 0);
 	if (!conf->portsrc) {
 	    debug(DBG_ERR, "malloc failed");
 	    return 0;
@@ -2687,7 +2679,6 @@ int confserver_cb(struct gconffile **cf, void *arg, char *block, char *opt, char
             "RetryCount", CONF_LINT, &retrycount,
             "DynamicLookupCommand", CONF_STR, &conf->dynamiclookupcommand,
             "LoopPrevention", CONF_BLN, &conf->loopprevention,
-            "UseDynAuthPort", CONF_BLN, &conf->usedynauthport,
             NULL
 	    )) {
 	debug(DBG_ERR, "configuration error");
@@ -2856,7 +2847,7 @@ int confrewrite_cb(struct gconffile **cf, void *arg, char *block, char *opt, cha
 
 int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char *val) {
     char **servers = NULL, **accservers = NULL, **dynauthservers = NULL, *msg = NULL;
-    uint8_t accresp = 0, dynauthresp = 0;
+    uint8_t accresp = 0;
 
     debug(DBG_DBG, "confrealm_cb called for %s", block);
 
@@ -2866,12 +2857,11 @@ int confrealm_cb(struct gconffile **cf, void *arg, char *block, char *opt, char 
                           "dynAuthServer", CONF_MSTR, &dynauthservers,
 			  "ReplyMessage", CONF_STR, &msg,
 			  "AccountingResponse", CONF_BLN, &accresp,
-                          "DynAuthResponse", CONF_BLN, &dynauthresp,
 			  NULL
 	    ))
 	debugx(1, DBG_ERR, "configuration error");
 
-    addrealm(realms, val, servers, accservers, dynauthservers, msg, accresp, dynauthresp);
+    addrealm(realms, val, servers, accservers, dynauthservers, msg, accresp);
     return 1;
 }
 
