@@ -741,9 +741,8 @@ set to on, the proxy will log some of the accounting information and send an
 Accounting-Response back. This stops clients from retransmitting
 Accounting-Request messages when a realm has no accountingServer configured.
 
-Similarly, if there is no \fBDynAuthServer\fR option, the proxy will silently ignore
-CoA and Disconnect requests. Setting \fBDynAuthResponse\fR to on will make the proxy
-log some information and send a CoA or Disconnect NAK back.
+If there is no \fBDynAuthServer\fR option, the proxy will log some information and
+send a CoA or Disconnect NAK back in all cases.
 
 .SH "TLS BLOCK"
 .nf
